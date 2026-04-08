@@ -3,19 +3,17 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useStopsStore } from "@/lib/store";
 
-interface AddressFormProps {
-  onAdd: (address: string) => void;
-}
-
-export default function AddressForm({ onAdd }: AddressFormProps) {
+export default function AddressForm() {
   const [value, setValue] = useState("");
+  const addStop = useStopsStore((s) => s.addStop);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) return;
-    onAdd(trimmed);
+    addStop(trimmed);
     setValue("");
   }
 

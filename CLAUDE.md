@@ -43,9 +43,10 @@ lib/           → Utilidades
 ```
 
 ### Estado
-- Usar `useState` local para estado simple.
-- No usar gestores de estado globales (Redux, Zustand) a menos que sea estrictamente necesario.
-- En fases futuras se puede agregar persistencia (localStorage o DB).
+- Estado global con **Zustand** + middleware `persist` (localStorage, key: `rutas-stops`).
+- Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, completado}`.
+- Acciones: `addStop`, `removeStop`, `toggleCompleted`, `clearAll`.
+- `addStop` pasa el texto por `parseCoordinates()` antes de guardar.
 
 ### Navegación/Rutas
 - La optimización de rutas debe usar la **ubicación actual del dispositivo (GPS)** como punto de partida.
@@ -67,9 +68,9 @@ usamos 56px por margen de seguridad.
 ### ¿Por qué no hay dark mode?
 Simplicidad. La app se usa de día durante rutas de entrega. No se necesita dark mode por ahora.
 
-### ¿Por qué estado local con useState y no un store global?
-La app tiene una sola página con una lista de paradas. `useState` en `page.tsx` es suficiente.
-Solo escalar a Zustand/Context si en el futuro hay múltiples páginas que compartan estado.
+### ¿Por qué Zustand con persist?
+Se necesita persistencia en localStorage para que la lista sobreviva recargas. Zustand + persist
+lo resuelve en ~30 líneas sin boilerplate. El store vive en `lib/store.ts`.
 
 ### ¿Por qué Waze y Google Maps como links externos?
 Integrar navegación turn-by-turn dentro de la app es innecesariamente complejo. Es más práctico
@@ -82,9 +83,16 @@ La optimización de ruta debe pedir permiso de geolocalización y usar esas coor
 ## Stack técnico
 - **Framework**: Next.js 16 (App Router, Turbopack)
 - **UI**: Tailwind CSS v4 + shadcn/ui
+- **Estado**: Zustand con persist middleware (localStorage)
 - **Lenguaje**: TypeScript
 - **Deploy**: Vercel (Hobby)
 - **Componentes shadcn instalados**: Button, Input, Card
+
+### Parser de coordenadas (`lib/parsers.ts`)
+Función pura `parseCoordinates(text)` que extrae lat/lng de:
+- Links de Waze (`waze.com/ul?ll=...`)
+- Links de Google Maps (`@lat,lng`, `?q=lat,lng`, `/place/.../lat,lng`)
+- Retorna `null` si es texto plano sin coordenadas
 
 ## Restricciones
 - No agregar librerías innecesarias.
