@@ -45,8 +45,11 @@ lib/           → Utilidades
 ### Estado
 - Estado global con **Zustand** + middleware `persist` (localStorage, key: `rutas-stops`).
 - Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, completado}`.
-- Acciones: `addStop`, `removeStop`, `toggleCompleted`, `clearAll`.
+- Tipo `HomeLocation`: `{address, lat, lng}` — punto de regreso para ruta circular.
+- `isOptimized: boolean` — dirty flag que se pone false al agregar/eliminar/completar paradas.
+- Acciones: `addStop`, `addStopWithCoords`, `removeStop`, `toggleCompleted`, `reorderStops`, `setHomeLocation`, `clearHomeLocation`, `clearAll`.
 - `addStop` pasa el texto por `parseCoordinates()` antes de guardar.
+- `addStopWithCoords` recibe coords ya resueltas (desde geocoding o sugerencias).
 
 ### Navegación/Rutas
 - La optimización de rutas debe usar la **ubicación actual del dispositivo (GPS)** como punto de partida.
@@ -90,9 +93,86 @@ La optimización de ruta debe pedir permiso de geolocalización y usar esas coor
 
 ### Parser de coordenadas (`lib/parsers.ts`)
 Función pura `parseCoordinates(text)` que extrae lat/lng de:
-- Links de Waze (`waze.com/ul?ll=...`)
+- Links de Waze con `ll=` (`waze.com/ul?ll=...`)
 - Links de Google Maps (`@lat,lng`, `?q=lat,lng`, `/place/.../lat,lng`)
-- Retorna `null` si es texto plano sin coordenadas
+- Apple Maps (`maps.apple.com/?ll=...`)
+- URI geo de Android/WhatsApp (`geo:lat,lng`)
+- Coordenadas sueltas (`9.9281,-84.0907`)
+- Retorna `null` si no encuentra coordenadas
+
+Helpers adicionales:
+- `isUrl(text)` — detecta si el texto es una URL (http/https)
+- `cleanInput(text)` — decodifica `+`→espacios y `%XX` URL encoding
+
+### Resolución de links acortados (`app/api/resolve-link/route.ts`)
+- Route Handler GET que sigue redirects de links acortados (Waze, Google Maps, goo.gl)
+- Parsea coords de la URL final; si no las encuentra, busca en el HTML
+- Soporta: `waze.com/ul/xxx`, `maps.app.goo.gl/xxx`, cualquier short URL de mapas
+
+## Decisiones de diseño (Fase 3)
+
+### Optimización de rutas (TSP)
+- Se usa **OpenRouteService** (endpoint `/optimization`, formato VROOM).
+- La API key se protege en `.env.local` como `ORS_API_KEY` y se accede via Route Handler `app/api/optimize/route.ts`.
+- El Route Handler recibe `{origin: [lng,lat], end?: [lng,lat], jobs: [{id, location: [lng,lat]}]}` y retorna `{orderedIds: string[]}`.
+- El botón "Optimizar Ruta" pide geolocalización del dispositivo como punto de partida.
+- Paradas sin coordenadas se ignoran en la optimización y quedan al final de la lista.
+- Estados de carga: idle → "Obteniendo ubicación..." → "Calculando mejor ruta..." → resultado/error.
+
+## Decisiones de diseño (Fase 3.5)
+
+### Autocompletado de direcciones
+- Se usa **ORS Geocode Autocomplete** (`/geocode/autocomplete`) con `boundary.country=CR`.
+- Route Handler en `app/api/geocode/route.ts` — proxy GET, retorna `[{label, lat, lng}]`.
+- `AddressForm` detecta si el input es un link (vía `parseCoordinates`) o texto:
+  - **Link**: muestra "Link detectado", botón "Agregar Link", usa parser de Fase 2.
+  - **Texto (3+ chars)**: debounce 500ms → llama `/api/geocode` → dropdown de sugerencias.
+- Al seleccionar sugerencia → `addStopWithCoords(label, lat, lng)` directo al store.
+- Botón "Agregar Parada" siempre disponible como fallback (agrega sin coords).
+- Dropdown: items con `min-h-[48px]`, se cierra con click/touch outside, muestra "Buscando..." y "Sin resultados".
+
+## Decisiones de diseño (Fase 3.7)
+
+### Robustez del ingreso de direcciones
+El `handleSubmit` de `AddressForm` sigue 3 caminos según el input:
+1. **Coords directas** (regex match) → `addStopWithCoords()` inmediato
+2. **URL sin coords visibles** (link acortado) → `/api/resolve-link` sigue redirects → extrae coords
+3. **Texto plano** → `/api/geocode` auto-geocodifica → usa primer resultado
+
+Formatos soportados: Waze (con/sin coords, acortado), Google Maps (todos los formatos, goo.gl),
+Apple Maps, URI geo, coordenadas sueltas, texto URL-encoded con `+`, texto plano de WhatsApp.
+
+### Depuración del botón Optimizar
+- `console.log` en cada paso: GPS, jobs enviados, respuesta ORS
+- Errores de GPS diferenciados: permiso denegado, GPS apagado, timeout
+- Estado "success" con feedback visual (3s) + estado "error" con botón "Reintentar"
+
+## Decisiones de diseño (Fase 4)
+
+### Home/Base (Ruta Circular)
+- `homeLocation` en el store Zustand: se persiste en localStorage.
+- `HomeConfig.tsx`: componente con autocompletado ORS para buscar la base/casa/bodega.
+- Al optimizar, se envía `end: [home.lng, home.lat]` al Route Handler.
+- ORS VROOM configura `vehicle.end` para que la ruta termine en casa.
+- Si no hay home configurado, la ruta es abierta (sin regreso forzado).
+
+### Reverse Geocoding (Nombres descriptivos para links)
+- Route Handler `app/api/reverse-geocode/route.ts` — proxy a ORS `/geocode/reverse`.
+- Cuando se agregan paradas desde links (caminos 1 y 2 de AddressForm), se llama reverse geocode
+  para reemplazar la URL cruda por un nombre legible (ej. "Barrio Escalante, San José").
+- Fallback si falla: `"Dirección de enlace"`.
+
+### Dirty State (isOptimized)
+- `isOptimized` se pone `true` al reordenar exitosamente, `false` al modificar la lista.
+- Botón Optimizar cambia a naranja con "Ruta Desactualizada — Reoptimizar" cuando `isOptimized === false`.
+- Botón verde cuando la ruta está al día.
+
+### Paleta de colores (botón Optimizar, actualizada)
+- **Optimizar (idle, primera vez)**: `bg-green-600` verde
+- **Ruta desactualizada (dirty)**: `bg-amber-500` naranja
+- **Calculando**: `bg-green-600` + spinner
+- **Éxito**: `bg-green-700` + checkmark (3s)
+- **Error/Reintentar**: `bg-amber-600`
 
 ## Restricciones
 - No agregar librerías innecesarias.
