@@ -1,9 +1,80 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useStopsStore } from "@/lib/store";
 import type { Stop } from "@/lib/store";
+
+function NotesField({ stop }: { stop: Stop }) {
+  const updateStopNotes = useStopsStore((s) => s.updateStopNotes);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(stop.notas);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+      const len = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(len, len);
+    }
+  }, [editing]);
+
+  function handleBlur() {
+    const trimmed = draft.trim();
+    if (trimmed !== stop.notas) {
+      updateStopNotes(stop.id, trimmed);
+    }
+    setDraft(trimmed);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+        placeholder="Nombre del cliente, teléfono, referencias, monto…"
+        className="w-full min-h-[96px] rounded-xl border-2 border-input bg-background p-3 text-base resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+    );
+  }
+
+  if (stop.notas) {
+    return (
+      <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+        <p className="flex-1 text-base text-amber-900 whitespace-pre-wrap break-words">
+          {stop.notas}
+        </p>
+        <Button
+          variant="outline"
+          className="h-10 px-3 text-base rounded-lg flex-shrink-0"
+          onClick={() => {
+            setDraft(stop.notas);
+            setEditing(true);
+          }}
+        >
+          Editar
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      className="h-12 text-base font-medium rounded-xl border-dashed"
+      onClick={() => {
+        setDraft("");
+        setEditing(true);
+      }}
+    >
+      + Agregar nota
+    </Button>
+  );
+}
 
 function buildWazeUrl(stop: Stop): string {
   if (stop.lat !== null && stop.lng !== null) {
@@ -72,6 +143,7 @@ export default function RouteList() {
                 Coordenadas: {stop.lat.toFixed(4)}, {stop.lng.toFixed(4)}
               </p>
             )}
+            <NotesField stop={stop} />
             <div className="flex gap-2">
               <Button
                 variant="default"

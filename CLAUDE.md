@@ -43,11 +43,12 @@ lib/           → Utilidades
 ```
 
 ### Estado
-- Estado global con **Zustand** + middleware `persist` (localStorage, key: `rutas-stops`).
-- Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, completado}`.
+- Estado global con **Zustand** + middleware `persist` (localStorage, key: `rutas-stops`, version 2).
+- Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, completado, notas}`.
 - Tipo `HomeLocation`: `{address, lat, lng}` — punto de regreso para ruta circular.
 - `isOptimized: boolean` — dirty flag que se pone false al agregar/eliminar/completar paradas.
-- Acciones: `addStop`, `addStopWithCoords`, `removeStop`, `toggleCompleted`, `reorderStops`, `setHomeLocation`, `clearHomeLocation`, `clearAll`.
+- Acciones: `addStop`, `addStopWithCoords`, `removeStop`, `toggleCompleted`, `reorderStops`, `updateStopNotes`, `setHomeLocation`, `clearHomeLocation`, `clearAll`.
+- Migración de persist v1→v2 agrega `notas: ""` a paradas previas sin perder datos.
 - `addStop` pasa el texto por `parseCoordinates()` antes de guardar.
 - `addStopWithCoords` recibe coords ya resueltas (desde geocoding o sugerencias).
 
@@ -173,6 +174,17 @@ Apple Maps, URI geo, coordenadas sueltas, texto URL-encoded con `+`, texto plano
 - **Calculando**: `bg-green-600` + spinner
 - **Éxito**: `bg-green-700` + checkmark (3s)
 - **Error/Reintentar**: `bg-amber-600`
+
+## Decisiones de diseño (Fase 5)
+
+### Notas editables por parada
+- Cada `Stop` tiene un campo `notas: string` (default `""`) para info del cliente: nombre, teléfono, referencias, monto, etc.
+- Acción `updateStopNotes(id, notas)` en el store. **No** marca `isOptimized = false` (las notas no afectan la ruta).
+- UI colapsable en `RouteList.tsx` (componente interno `NotesField`):
+  - Sin nota → botón outline con borde punteado "+ Agregar nota" (`h-12`).
+  - Editando → `<textarea>` con autofocus, `min-h-[96px]`, guarda `onBlur` (trim + solo si cambió).
+  - Con nota → bloque `bg-amber-50` con el texto y botón "Editar" al lado.
+- Persist middleware: `version: 2` con `migrate` que rellena `notas: ""` en paradas guardadas antes de Fase 5.
 
 ## Restricciones
 - No agregar librerías innecesarias.

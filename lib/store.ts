@@ -8,6 +8,7 @@ export interface Stop {
   lat: number | null;
   lng: number | null;
   completado: boolean;
+  notas: string;
 }
 
 export interface HomeLocation {
@@ -25,6 +26,7 @@ interface StopsState {
   removeStop: (id: string) => void;
   toggleCompleted: (id: string) => void;
   reorderStops: (orderedIds: string[]) => void;
+  updateStopNotes: (id: string, notas: string) => void;
   setHomeLocation: (address: string, lat: number, lng: number) => void;
   clearHomeLocation: () => void;
   clearAll: () => void;
@@ -45,6 +47,7 @@ export const useStopsStore = create<StopsState>()(
           lat: coords?.lat ?? null,
           lng: coords?.lng ?? null,
           completado: false,
+          notas: "",
         };
         set((state) => ({ stops: [...state.stops, stop], isOptimized: false }));
       },
@@ -56,6 +59,7 @@ export const useStopsStore = create<StopsState>()(
           lat,
           lng,
           completado: false,
+          notas: "",
         };
         set((state) => ({ stops: [...state.stops, stop], isOptimized: false }));
       },
@@ -91,6 +95,14 @@ export const useStopsStore = create<StopsState>()(
         });
       },
 
+      updateStopNotes: (id: string, notas: string) => {
+        set((state) => ({
+          stops: state.stops.map((s) =>
+            s.id === id ? { ...s, notas } : s
+          ),
+        }));
+      },
+
       setHomeLocation: (address: string, lat: number, lng: number) => {
         set({ homeLocation: { address, lat, lng } });
       },
@@ -103,6 +115,17 @@ export const useStopsStore = create<StopsState>()(
     }),
     {
       name: "rutas-stops",
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as { stops?: Array<Partial<Stop>> } & Record<string, unknown>;
+        if (version < 2 && state?.stops) {
+          state.stops = state.stops.map((s) => ({
+            ...s,
+            notas: typeof s.notas === "string" ? s.notas : "",
+          }));
+        }
+        return state as unknown as StopsState;
+      },
     }
   )
 );
