@@ -147,22 +147,21 @@ export default function RouteList() {
             <div className="flex gap-2">
               <Button
                 variant="default"
-                className="flex-1 h-14 text-base font-bold rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
+                className="flex-1 h-14 text-base font-bold rounded-xl bg-sky-500 hover:bg-sky-600 text-white"
                 onClick={() => window.open(buildWazeUrl(stop), "_blank")}
               >
                 Ir con Waze
               </Button>
               <Button
                 variant="default"
-                className="flex-1 h-14 text-base font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+                className="flex-1 h-14 text-base font-bold rounded-xl bg-[#34A853] hover:bg-[#2c8f46] text-white"
                 onClick={() => window.open(buildMapsUrl(stop), "_blank")}
               >
                 Ir con Maps
               </Button>
             </div>
             <Button
-              variant="destructive"
-              className="h-12 text-base font-semibold rounded-xl"
+              className="h-12 text-base font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white"
               onClick={() => removeStop(stop.id)}
             >
               Eliminar

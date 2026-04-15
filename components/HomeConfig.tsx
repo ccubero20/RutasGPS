@@ -105,9 +105,8 @@ export default function HomeConfig() {
             Cambiar
           </Button>
           <Button
-            variant="destructive"
             onClick={handleClear}
-            className="h-12 text-base font-semibold rounded-xl px-4"
+            className="h-12 text-base font-semibold rounded-xl px-4 bg-red-600 hover:bg-red-700 text-white"
           >
             Quitar
           </Button>

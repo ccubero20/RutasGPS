@@ -22,9 +22,9 @@ Desplegada en Vercel (Hobby plan). La usuaria final es una mujer de 50 años.
 - **Bordes redondeados**: `rounded-xl` para botones y cards.
 
 ### Paleta de colores (botones de acción)
-- **Waze**: `bg-violet-600 hover:bg-violet-700 text-white`
-- **Google Maps**: `bg-blue-600 hover:bg-blue-700 text-white`
-- **Eliminar/Destructivo**: usar variant `destructive` de shadcn
+- **Waze**: `bg-sky-500 hover:bg-sky-600 text-white` (celeste, acorde a marca Waze)
+- **Google Maps**: `bg-[#34A853] hover:bg-[#2c8f46] text-white` (verde Google Maps)
+- **Eliminar/Destructivo**: `bg-red-600 hover:bg-red-700 text-white` (rojo explícito)
 - **Primario/Agregar**: usar variant `default` de shadcn (negro)
 
 ### Componentes UI
