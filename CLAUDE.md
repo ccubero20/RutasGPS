@@ -44,11 +44,11 @@ lib/           → Utilidades
 
 ### Estado
 - Estado global con **Zustand** + middleware `persist` (localStorage, key: `rutas-stops`, version 2).
-- Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, completado, notas}`.
+- Store en `lib/store.ts`. Tipo `Stop`: `{id, textoOriginal, lat, lng, status, notes}`.
 - Tipo `HomeLocation`: `{address, lat, lng}` — punto de regreso para ruta circular.
-- `isOptimized: boolean` — dirty flag que se pone false al agregar/eliminar/completar paradas.
-- Acciones: `addStop`, `addStopWithCoords`, `removeStop`, `toggleCompleted`, `reorderStops`, `updateStopNotes`, `setHomeLocation`, `clearHomeLocation`, `clearAll`.
-- Migración de persist v1→v2 agrega `notas: ""` a paradas previas sin perder datos.
+- `isOptimized: boolean` — dirty flag que se pone false al agregar/eliminar/actualizar paradas.
+- Acciones: `addStop`, `addStopWithCoords`, `removeStop`, `updateStopStatus`, `reorderStops`, `updateStopNotes`, `setHomeLocation`, `clearHomeLocation`, `clearAll`.
+- Migración de persist v2→v3 agrega `status` y `notes` (reemplaza `completado` y `notas`).
 - `addStop` pasa el texto por `parseCoordinates()` antes de guardar.
 - `addStopWithCoords` recibe coords ya resueltas (desde geocoding o sugerencias).
 

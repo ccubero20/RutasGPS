@@ -14,7 +14,7 @@ export default function OptimizeButton() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const pendingStops = stops.filter((s) => !s.completado);
+  const pendingStops = stops.filter((s) => s.status === "pending");
   const withCoords = pendingStops.filter((s) => s.lat !== null && s.lng !== null);
   const withoutCoords = pendingStops.filter((s) => s.lat === null || s.lng === null);
 

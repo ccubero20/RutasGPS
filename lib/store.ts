@@ -1,14 +1,17 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { parseCoordinates } from "./parsers";
+import { createClient } from "./supabase/client";
+
+export type StopStatus = "pending" | "delivered" | "failed";
 
 export interface Stop {
   id: string;
   textoOriginal: string;
   lat: number | null;
   lng: number | null;
-  completado: boolean;
-  notas: string;
+  status: StopStatus;
+  notes: string;
 }
 
 export interface HomeLocation {
@@ -21,107 +24,304 @@ interface StopsState {
   stops: Stop[];
   homeLocation: HomeLocation | null;
   isOptimized: boolean;
-  addStop: (texto: string) => void;
-  addStopWithCoords: (texto: string, lat: number, lng: number) => void;
-  removeStop: (id: string) => void;
-  toggleCompleted: (id: string) => void;
-  reorderStops: (orderedIds: string[]) => void;
-  updateStopNotes: (id: string, notas: string) => void;
-  setHomeLocation: (address: string, lat: number, lng: number) => void;
-  clearHomeLocation: () => void;
-  clearAll: () => void;
+  userId: string | null;
+  setUserId: (userId: string | null) => void;
+  addStop: (texto: string) => Promise<void>;
+  addStopWithCoords: (texto: string, lat: number, lng: number) => Promise<void>;
+  removeStop: (id: string) => Promise<void>;
+  updateStopStatus: (id: string, status: StopStatus) => Promise<void>;
+  reorderStops: (orderedIds: string[]) => Promise<void>;
+  updateStopNotes: (id: string, notes: string) => Promise<void>;
+  setHomeLocation: (address: string, lat: number, lng: number) => Promise<void>;
+  clearHomeLocation: () => Promise<void>;
+  clearAll: () => Promise<void>;
+  reset: () => void;
+  refreshSession: () => Promise<void>;
+  uploadToSupabase: () => Promise<void>;
+  downloadFromSupabase: () => Promise<void>;
 }
+
+const supabase = createClient();
 
 export const useStopsStore = create<StopsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       stops: [],
       homeLocation: null,
       isOptimized: false,
+      userId: null,
 
-      addStop: (texto: string) => {
+      setUserId: (userId: string | null) => {
+        set({ userId });
+      },
+
+      refreshSession: async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          set({ userId: session.user.id });
+        }
+      },
+
+      addStop: async (texto: string) => {
         const coords = parseCoordinates(texto);
         const stop: Stop = {
           id: crypto.randomUUID(),
           textoOriginal: texto,
           lat: coords?.lat ?? null,
           lng: coords?.lng ?? null,
-          completado: false,
-          notas: "",
+          status: "pending",
+          notes: "",
         };
         set((state) => ({ stops: [...state.stops, stop], isOptimized: false }));
+
+        const { userId } = get();
+        if (userId) {
+          await supabase.from("stops").insert({
+            id: stop.id,
+            user_id: userId,
+            address: stop.textoOriginal,
+            name: stop.textoOriginal,
+            coordinates: { lat: stop.lat, lng: stop.lng },
+            notes: stop.notes,
+            status: stop.status,
+            order_index: get().stops.length - 1,
+          });
+        }
       },
 
-      addStopWithCoords: (texto: string, lat: number, lng: number) => {
+      addStopWithCoords: async (texto: string, lat: number, lng: number) => {
         const stop: Stop = {
           id: crypto.randomUUID(),
           textoOriginal: texto,
           lat,
           lng,
-          completado: false,
-          notas: "",
+          status: "pending",
+          notes: "",
         };
         set((state) => ({ stops: [...state.stops, stop], isOptimized: false }));
+
+        const { userId } = get();
+        if (userId) {
+          await supabase.from("stops").insert({
+            id: stop.id,
+            user_id: userId,
+            address: stop.textoOriginal,
+            name: stop.textoOriginal,
+            coordinates: { lat, lng },
+            notes: stop.notes,
+            status: stop.status,
+            order_index: get().stops.length - 1,
+          });
+        }
       },
 
-      removeStop: (id: string) => {
+      removeStop: async (id: string) => {
         set((state) => ({
           stops: state.stops.filter((s) => s.id !== id),
           isOptimized: false,
         }));
+
+        const { userId } = get();
+        if (userId) {
+          await supabase.from("stops").delete().match({ id, user_id: userId });
+        }
       },
 
-      toggleCompleted: (id: string) => {
+      updateStopStatus: async (id: string, status: StopStatus) => {
         set((state) => ({
           stops: state.stops.map((s) =>
-            s.id === id ? { ...s, completado: !s.completado } : s
+            s.id === id ? { ...s, status } : s
           ),
           isOptimized: false,
         }));
+
+        const { userId } = get();
+        if (userId) {
+          const { error } = await supabase
+            .from("stops")
+            .update({ status })
+            .match({ id, user_id: userId });
+          
+          if (error) {
+            console.error("Error updating stop status in Supabase:", error);
+          }
+        }
       },
 
-      reorderStops: (orderedIds: string[]) => {
+      reorderStops: async (orderedIds: string[]) => {
         set((state) => {
           const idOrder = new Map(orderedIds.map((id, i) => [id, i]));
-          const ordered = [...state.stops].sort((a, b) => {
-            const aIdx = idOrder.get(a.id);
-            const bIdx = idOrder.get(b.id);
-            if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
-            if (aIdx !== undefined) return -1;
-            if (bIdx !== undefined) return 1;
-            return 0;
-          });
+          
+          // Clasificar paradas
+          const finished = state.stops.filter(s => s.status !== "pending");
+          const pending = state.stops.filter(s => s.status === "pending");
+          
+          // Dentro de pendientes, separar optimizadas de no optimizadas
+          const optimized = pending
+            .filter(s => idOrder.has(s.id))
+            .sort((a, b) => (idOrder.get(a.id)!) - (idOrder.get(b.id)!));
+            
+          const remaining = pending.filter(s => !idOrder.has(s.id));
+
+          // El nuevo orden es: Finalizadas primero, luego Optimizadas, luego Resto
+          const ordered = [...finished, ...optimized, ...remaining];
+          
           return { stops: ordered, isOptimized: true };
         });
+
+        const { userId, stops } = get();
+        if (userId) {
+          // Update all stops order_index
+          const updates = stops.map((stop, index) => ({
+            id: stop.id,
+            user_id: userId,
+            order_index: index,
+            address: stop.textoOriginal,
+            name: stop.textoOriginal,
+            coordinates: { lat: stop.lat, lng: stop.lng },
+            notes: stop.notes,
+            status: stop.status,
+          }));
+          const { error } = await supabase.from("stops").upsert(updates);
+          if (error) {
+            console.error("Error upserting stops order in Supabase:", error);
+          }
+        }
       },
 
-      updateStopNotes: (id: string, notas: string) => {
+      updateStopNotes: async (id: string, notes: string) => {
         set((state) => ({
           stops: state.stops.map((s) =>
-            s.id === id ? { ...s, notas } : s
+            s.id === id ? { ...s, notes } : s
           ),
         }));
+
+        const { userId } = get();
+        if (userId) {
+          const { error } = await supabase
+            .from("stops")
+            .update({ notes })
+            .match({ id, user_id: userId });
+          
+          if (error) {
+            console.error("Error updating stop notes in Supabase:", error);
+          }
+        }
       },
 
-      setHomeLocation: (address: string, lat: number, lng: number) => {
+      setHomeLocation: async (address: string, lat: number, lng: number) => {
         set({ homeLocation: { address, lat, lng } });
+
+        const { userId } = get();
+        if (userId) {
+          await supabase
+            .from("profiles")
+            .update({ home_location: { address, lat, lng } })
+            .match({ id: userId });
+        }
       },
 
-      clearHomeLocation: () => {
+      clearHomeLocation: async () => {
         set({ homeLocation: null });
+
+        const { userId } = get();
+        if (userId) {
+          await supabase
+            .from("profiles")
+            .update({ home_location: null })
+            .match({ id: userId });
+        }
       },
 
-      clearAll: () => set({ stops: [], isOptimized: false }),
+      clearAll: async () => {
+        const { userId, stops } = get();
+        set({ stops: [], isOptimized: false });
+
+        if (userId && stops.length > 0) {
+          await supabase.from("stops").delete().match({ user_id: userId });
+        }
+      },
+
+      reset: () => {
+        set({ stops: [], homeLocation: null, isOptimized: false, userId: null });
+      },
+
+      uploadToSupabase: async () => {
+        const { userId, stops, homeLocation } = get();
+        if (!userId) return;
+
+        if (stops.length > 0) {
+          const updates = stops.map((stop, index) => ({
+            id: stop.id,
+            user_id: userId,
+            address: stop.textoOriginal,
+            name: stop.textoOriginal,
+            coordinates: { lat: stop.lat, lng: stop.lng },
+            notes: stop.notes,
+            status: stop.status,
+            order_index: index,
+          }));
+          await supabase.from("stops").upsert(updates);
+        }
+
+        if (homeLocation) {
+          await supabase
+            .from("profiles")
+            .update({ home_location: homeLocation })
+            .match({ id: userId });
+        }
+      },
+
+      downloadFromSupabase: async () => {
+        const { userId } = get();
+        if (!userId) return;
+
+        // Download stops
+        const { data: stopsData, error: stopsError } = await supabase
+          .from("stops")
+          .select("*")
+          .order("order_index", { ascending: true });
+
+        if (!stopsError && stopsData) {
+          const stops: Stop[] = stopsData.map((s) => ({
+            id: s.id,
+            textoOriginal: s.name || s.address,
+            lat: s.coordinates?.lat ?? null,
+            lng: s.coordinates?.lng ?? null,
+            status: (s.status as StopStatus) || "pending",
+            notes: s.notes || "",
+          }));
+          set({ stops });
+        }
+
+        // Download profile (home_location)
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("home_location")
+          .eq("id", userId)
+          .single();
+
+        if (!profileError && profileData) {
+          set({ homeLocation: profileData.home_location as HomeLocation | null });
+        }
+      },
     }),
     {
       name: "rutas-stops",
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
-        const state = persistedState as { stops?: Array<Partial<Stop>> } & Record<string, unknown>;
+        const state = persistedState as any;
         if (version < 2 && state?.stops) {
-          state.stops = state.stops.map((s) => ({
+          state.stops = state.stops.map((s: any) => ({
             ...s,
             notas: typeof s.notas === "string" ? s.notas : "",
+          }));
+        }
+        if (version < 3 && state?.stops) {
+          state.stops = state.stops.map((s: any) => ({
+            ...s,
+            status: s.status || (s.completado ? "delivered" : "pending"),
+            notes: s.notes || s.notas || "",
           }));
         }
         return state as unknown as StopsState;

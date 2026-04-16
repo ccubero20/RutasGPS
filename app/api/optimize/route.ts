@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 interface JobInput {
   id: string;
   location: [number, number]; // [lng, lat]
+  status?: string;
 }
 
 interface OptimizeRequest {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { origin, end, jobs } = body;
+  const { origin, end, jobs: allJobs } = body;
 
   if (!origin || !Array.isArray(origin) || origin.length !== 2) {
     return NextResponse.json(
@@ -39,9 +40,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Filtrar solo las paradas pendientes para la optimización
+  const jobs = allJobs.filter((j) => !j.status || j.status === "pending");
+
   if (!jobs || jobs.length < 2) {
     return NextResponse.json(
-      { error: "Se necesitan al menos 2 paradas para optimizar." },
+      { error: "Se necesitan al menos 2 paradas pendientes para optimizar." },
       { status: 400 }
     );
   }

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import SyncProvider from "@/components/SyncProvider";
+import Header from "@/components/Header";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -27,11 +29,11 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${geistSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
-        <header className="sticky top-0 z-10 bg-primary text-primary-foreground px-4 py-4 shadow-md">
-          <h1 className="text-2xl font-bold text-center">Optimización de rutas</h1>
-        </header>
+        <Header />
         <main className="flex-1 w-full max-w-lg mx-auto px-4 py-6">
-          {children}
+          <SyncProvider>
+            {children}
+          </SyncProvider>
         </main>
       </body>
     </html>
